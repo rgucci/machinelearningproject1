@@ -1,0 +1,135 @@
+---
+title: "Machine Learning Project"
+author: "Russell Gutierrez"
+date: "Sunday, August 23, 2015"
+output: html_document
+---
+#Overview
+##Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+##Data 
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+These 2 files should be downloaded to the default working directory for the R code to process
+
+#Analysis
+##Environment and Data Preparation
+The following packages were installed for use in this analysis:
+
+````{r}
+#install.packages("caret")
+#install.packages("e1071", dependencies=TRUE)
+#install.packages("randomForest")
+#install.packages("rpart")
+#install.packages("rpart.plot")
+
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+```
+
+For reproducibility, we set the random number seed to 20150823
+````{r}
+set.seed(20150823)
+```
+
+Then we clean up the available data (check for missing data and remove irrelevant data, namely columns 1 to 7)
+````{r, results='hide'}
+trainingset <- read.csv("pml-training.csv", na.strings=c("NA","#DIV/0!", ""))
+testingset <- read.csv('pml-testing.csv', na.strings=c("NA","#DIV/0!", ""))
+
+trainingset<-trainingset[,colSums(is.na(trainingset)) == 0]
+testingset <-testingset[,colSums(is.na(testingset)) == 0]
+
+trainingset   <-trainingset[,-c(1:7)]
+testingset <-testingset[,-c(1:7)]
+```
+
+And do a brief examination of the resulting data for analysis
+````{r, results='hide'}
+dim(trainingset)
+dim(testingset)
+head(trainingset)
+head(testingset)
+```
+
+##Data set partitioning for cross-validation
+For cross-validation, we need to partition the training data set into 2 subsets:
+1. subtraining (75%)
+2. subtest (25%)
+````{r, results='hide'}
+subsamples <- createDataPartition(y=trainingset$classe, p=0.75, list=FALSE)
+subTraining <- trainingset[subsamples, ] 
+subTesting <- trainingset[-subsamples, ]
+```
+
+##Choosing the right data model
+We now look at the "classe" variable with the help of a plot
+````{r}
+plot(subTraining$classe, 
+     col="blue", 
+     main="Levels of the classe (subTraining)", 
+     xlab="classe levels", 
+     ylab="Frequency")
+```
+
+"Classe" has 5 levels: A, B, C, D, E. Each type has more or less the same order of magnitude. Level A has 4000+ occurances and Level D ~2500 occurances.
+
+###Decision Tree Prediction Model
+For the first model, we will employ a decision tree:
+````{r}
+model1 <- rpart(classe ~ ., data=subTraining, method="class")
+prediction1 <- predict(model1, subTesting, type = "class")
+rpart.plot(model1, 
+           main="Classification Tree", 
+           extra=102, 
+           under=TRUE, 
+           faclen=0)
+```
+
+Now let's display the confusion matrix and statistics for model1
+````{r}
+confusionMatrix(prediction1, subTesting$classe)
+```
+
+###Random Forest Prediction Model
+For the second model, we will employ the random forest method. Then, examine the confusion matrix and statistics for model2
+````{r}
+model2 <- randomForest(classe ~. , data=subTraining, method="class")
+prediction2 <- predict(model2, subTesting, type = "class")
+confusionMatrix(prediction2, subTesting$classe)
+```
+
+###Conclusion
+Using random forest yields a higher accuracy of 0.995 (95% CI: (0.993, 0.997)).
+Using decision tree yields a much lower accuracy of 0.739 (95% CI: (0.727, 0.752)).
+So we decide to use model 2 (random forest).
+
+Using model2, the accurecy is 99.5%, with expected out of sample error estimate of 0.5% (1 minus accuracy for predictions in cross-validation data set). We expect very few of the test samples to be wrongly classified, as the accuracy is high at 99.5%
+
+##Final Prediction
+The following code is used to submit the generate the prediction results for the project
+````{r}
+prediction <- predict(model2, testingset, type="class")
+prediction
+
+#this will write the files for submission
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(prediction)
+```
